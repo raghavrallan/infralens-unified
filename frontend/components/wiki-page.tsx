@@ -2,7 +2,7 @@
 
 /* Static export navigation must be handled by FastAPI's HTML fallback. */
 /* eslint-disable @next/next/no-html-link-for-pages */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import type { Skill } from "../lib/types";
 import { Shell } from "./shell";
@@ -117,7 +117,12 @@ function groupByLetter(skills: Skill[]): LetterGroup[] {
   return groups;
 }
 
-export function WikiPage() {
+function WikiChrome({ embedded, children }: { embedded?: boolean; children: ReactNode }) {
+  if (embedded) return <>{children}</>;
+  return <Shell>{children}</Shell>;
+}
+
+export function WikiPage({ embedded = false }: { embedded?: boolean }) {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [selected, setSelected] = useState<Skill | null>(null);
   const [loading, setLoading] = useState(true);
@@ -170,7 +175,7 @@ export function WikiPage() {
   };
 
   return (
-    <Shell>
+    <WikiChrome embedded={embedded}>
       <main className="wiki-layout">
         <aside className="wiki-index">
           <h3>Skills A–Z</h3>
@@ -285,6 +290,6 @@ export function WikiPage() {
           )}
         </article>
       </main>
-    </Shell>
+    </WikiChrome>
   );
 }

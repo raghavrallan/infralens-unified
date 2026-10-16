@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, apiUrl, consumeSse, StreamIdleError } from "../lib/api";
 import { authHeaders, clearSession } from "../lib/auth";
 import { chatHref, readChatIdFromUrl, syncChatUrl } from "../lib/chat-route";
@@ -133,7 +133,12 @@ function actionEventText(event: ActionEvent) {
   return `${phase}${status}${poolState}${queueState}${jobId}${output ? `: ${output}` : ""}`;
 }
 
-export function ChatPage() {
+function ChatChrome({ embedded, children }: { embedded?: boolean; children: ReactNode }) {
+  if (embedded) return <>{children}</>;
+  return <Shell>{children}</Shell>;
+}
+
+export function ChatPage({ embedded = false }: { embedded?: boolean }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -881,7 +886,7 @@ export function ChatPage() {
   };
 
   return (
-    <Shell>
+    <ChatChrome embedded={embedded}>
       <div className="workspace">
         <aside className="chat-sidebar">
           <div className="project-bar"><span className="project-label">Project</span><div className="project-row">
@@ -946,6 +951,6 @@ export function ChatPage() {
       {projectModalOpen && <ProjectModal onClose={() => setProjectModalOpen(false)} onCreate={createProject} />}
       {fullAccessModalOpen && activeAction && <Modal eyebrow="Dangerous full-access action" title={fullAccessStep === 1 ? "Confirm this live change" : "Confirm execution a second time"} description="Full access can change the connected provider. The exact command, target, and risk are shown below. Two confirmations are required before queueing it." onClose={() => { if (!fullAccessBusy) setFullAccessModalOpen(false); }}><div className="full-access-review"><div><span className="modal-label">Target</span><code>{activeAction.target || "Provider operation"}</code></div><div><span className="modal-label">Command</span><code>{activeAction.command_preview || "Unavailable"}</code></div>{activeAction.risk && <div><span className="modal-label">Risk</span><p>{activeAction.risk}</p></div>}{activeAction.rollback && <div><span className="modal-label">Recovery</span><p>{activeAction.rollback}</p></div>}<div className="full-access-warning">{fullAccessStep === 1 ? "First confirmation: I understand this action can change live infrastructure." : "Second confirmation: execute the exact command shown above."}</div></div><div className="modal-actions"><button type="button" className="modal-btn ghost" onClick={() => setFullAccessModalOpen(false)} disabled={fullAccessBusy}>Cancel</button><button type="button" className="modal-btn danger" onClick={() => void confirmFullAccess()} disabled={fullAccessBusy}>{fullAccessBusy ? "Confirming…" : fullAccessStep === 1 ? "I understand, continue" : "Confirm and queue action"}</button></div></Modal>}
       {deleteTarget && <Modal eyebrow="Delete chat" title="Delete this conversation?" description={`This permanently removes “${deleteTarget.title || "New chat"}” and its messages.`} onClose={() => { if (!deletingChat) setDeleteTarget(null); }}><div className="modal-actions"><button type="button" className="modal-btn ghost" onClick={() => setDeleteTarget(null)} disabled={deletingChat}>Cancel</button><button type="button" className="modal-btn danger" onClick={() => void confirmDeleteChat()} disabled={deletingChat}>{deletingChat ? "Deleting…" : "Delete chat"}</button></div></Modal>}
-    </Shell>
+    </ChatChrome>
   );
 }

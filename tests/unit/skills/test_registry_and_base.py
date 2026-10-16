@@ -18,6 +18,38 @@ from app.skills.base import AgenticSkill, Skill, SkillRegistry, SkillResult
 from app.skills.wiki_format import wiki_page
 
 
+_SKILL_NAMES = (
+    "pipeline_auditor",
+    "pipeline_generator",
+    "iac_reviewer",
+    "cloud_posture",
+    "cost_analyzer",
+    "code_reviewer",
+    "drift_auditor",
+    "metrics_analyzer",
+    "log_analyzer",
+    "policy_generator",
+    "vuln_triage",
+    "compliance_mapper",
+    "incident_analyzer",
+    "infrastructure_architect",
+    "terraform_generator",
+    "terraform_executor",
+    "infra_debugger",
+    "deployment_manager",
+    "project_analyzer",
+    "report_writer",
+    "solution_architect",
+)
+
+
+@pytest.mark.unit
+def test_registry_names_match_the_inventory():
+    assert [skill.name for skill in registry.all()] == list(_SKILL_NAMES)
+    assert is_workflow_safe("solution_architect") is False
+    assert is_workflow_safe("cloud_posture") is True
+
+
 @pytest.mark.unit
 def test_every_registered_skill_has_classification_except_architect():
     from app.skills.classification import SKILL_ACTION_CLASS

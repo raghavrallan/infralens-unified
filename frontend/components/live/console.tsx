@@ -149,11 +149,15 @@ const NAV: Array<
   { href: "/alerts", label: "Alerts" },
   { href: "/insights", label: "Advisor" },
   { href: "/settings", label: "Organization" },
+  { section: "Workspace" },
+  { href: "/", label: "Chat" },
+  { href: "/wiki", label: "Wiki" },
 ];
 
 function active(href: string, pathname: string, search: URLSearchParams): boolean {
   const [path, query] = href.split("?");
-  if (pathname.replace(/\/$/, "") !== path) return false;
+  const current = pathname.replace(/\/$/, "") || "/";
+  if (current !== (path || "/")) return false;
   if (!query) return !search.get("kind");
   const want = new URLSearchParams(query);
   for (const [key, value] of want.entries()) {
@@ -172,7 +176,9 @@ function AppShell({ children }: { children: ReactNode }) {
   const workspace = model?.workspace;
   const projects = workspace?.projects || [];
   const project = projects.find((item) => item.id === model?.project?.id) || projects[0];
-  const showSetup = model?.status === "setup" && !pathname.startsWith("/settings");
+  const currentPath = pathname.replace(/\/$/, "") || "/";
+  const setupPaths = new Set(["/dashboard", "/vms", "/containers", "/databricks", "/lakes", "/pipelines", "/resources", "/costs", "/alerts", "/insights"]);
+  const showSetup = model?.status === "setup" && setupPaths.has(currentPath);
 
   useEffect(() => {
     setOpen(false);
