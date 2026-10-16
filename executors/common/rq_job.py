@@ -61,6 +61,29 @@ def _finish(action_id: str, status: str, result: dict[str, Any], error: str = ""
         response.raise_for_status()
 
 
+def refresh_azure_cli_profile(credentials: dict[str, Any], env: dict[str, str]) -> str:
+    """Write a CLI profile from a client-credentials token. Returns an error or ''."""
+    from pathlib import Path
+
+    from app.providers.azure_cli import ensure_profile
+    from app.providers.azure_infra import AzureCredentials
+
+    profile = env.get("AZURE_CONFIG_DIR") or ""
+    if not profile:
+        return "Azure CLI profile directory is missing"
+    creds = AzureCredentials(
+        tenant_id=str(credentials.get("tenant_id") or ""),
+        client_id=str(credentials.get("client_id") or ""),
+        client_secret=str(credentials.get("client_secret") or ""),
+        subscription_id=str(credentials.get("subscription_id") or "") or None,
+    )
+    try:
+        ensure_profile(Path(profile), creds)
+    except Exception as exc:  # noqa: BLE001 - the caller reports login failure
+        return str(exc)[:500]
+    return ""
+
+
 def _auth_env(provider: str, credentials: dict[str, Any], temp_dir: str) -> dict[str, str]:
     env = os.environ.copy()
     if provider == "azure":
@@ -268,12 +291,12 @@ def _run(
         and str(credentials.get("cloud_provider") or "azure") == "azure"
         and credentials.get("client_id")
     ):
-        login = run_cli(["az", "login", "--service-principal", "--username", str(credentials.get("client_id", "")), "--password", str(credentials.get("client_secret", "")), "--tenant", str(credentials.get("tenant_id", "")), "--output", "none"], env, cancel_check=cancel_check)
-        emit("azure_login", login)
-        if login.canceled:
+        if cancel_check():
             return "canceled", {}, "Canceled by user"
-        if login.returncode:
-            return "failed", {"stdout": login.stdout, "stderr": login.stderr}, "Azure CLI login failed"
+        login_error = refresh_azure_cli_profile(credentials, env)
+        emit("azure_login", CliResult(1 if login_error else 0, "", login_error or ""))
+        if login_error:
+            return "failed", {"stdout": "", "stderr": login_error}, "Azure CLI login failed"
         subscription = str(credentials.get("subscription_id", ""))
         if subscription:
             selected = run_cli(["az", "account", "set", "--subscription", subscription], env, cancel_check=cancel_check)

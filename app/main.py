@@ -206,10 +206,12 @@ app.add_middleware(
 from app.api.routes_mvp import router as mvp_router
 from app.api.routes_engineering import router as engineering_router
 from app.api.routes_integrations import router as integrations_router
+from app.api.routes_estate import router as estate_router
 
 app.include_router(mvp_router)
 app.include_router(engineering_router)
 app.include_router(integrations_router)
+app.include_router(estate_router)
 
 
 def _refresh_chat_memory(chat_id: str) -> None:

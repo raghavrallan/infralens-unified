@@ -306,8 +306,7 @@ def test_rq_job_azure_login_failure_and_execute_exception():
         "verify": [],
     }
     creds = {"client_id": "c", "client_secret": "s", "tenant_id": "t", "subscription_id": "sub"}
-    login_fail = CliResult(1, "", "denied")
-    with patch("executors.common.rq_job.run_cli", return_value=login_fail):
+    with patch("executors.common.rq_job.refresh_azure_cli_profile", return_value="denied"):
         status, _result, error = _run("azure", op, creds, {}, lambda *_a: None, lambda: False)
     assert status == "failed"
     assert "login" in error.lower()

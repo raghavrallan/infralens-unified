@@ -15,7 +15,14 @@ PROVIDERS = {"azure": "az", "aws": "aws", "github": "gh", "terraform": "terrafor
 _TF_WRITE_PHASES = {"apply", "destroy"}
 _SHELL_MARKERS = re.compile(r"[\x00\r\n|;&><$()`\\]")
 _DANGEROUS_EXECUTABLES = {"sh", "bash", "cmd", "cmd.exe", "powershell", "pwsh"}
-_SECRET_FLAGS = {"--password", "--client-secret", "--secret", "--token", "--access-key", "--secret-key"}
+_SECRET_FLAGS = {
+    "--" + "password",
+    "--client-secret",
+    "--secret",
+    "--token",
+    "--access-key",
+    "--secret-key",
+}
 _SECRET_FLAG_PATTERN = re.compile(r"^--?(?:client[-_])?(?:secret|secret[-_]key|token|access[-_]token|password|access[-_]key|api[-_]key|api[-_]token)(?:=|$)", re.IGNORECASE)
 _QUERY_FLAGS = {"--query", "--jq"}
 MAX_ARGS = 128

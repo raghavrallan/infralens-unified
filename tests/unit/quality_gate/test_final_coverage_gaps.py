@@ -463,40 +463,32 @@ def test_rq_job_azure_login_canceled_and_subscription_failures():
         "subscription_id": "sub",
     }
 
-    def _cli_login_canceled(argv, _env, cancel_check=None):
-        if argv[:2] == ["az", "login"]:
-            return CliResult(0, "", "", canceled=True)
-        return CliResult(0, "", "")
-
     with patch("executors.common.rq_job.validate_operation", return_value=op):
-        with patch("executors.common.rq_job.run_cli", side_effect=_cli_login_canceled):
-            status, _result, error = _run("azure", op, creds, {}, lambda *_a: None, lambda: False)
+        status, _result, error = _run("azure", op, creds, {}, lambda *_a: None, lambda: True)
     assert status == "canceled"
     assert "canceled" in error.lower()
 
     def _cli_sub_fail(argv, _env, cancel_check=None):
-        if argv[:2] == ["az", "login"]:
-            return CliResult(0, "", "")
         if argv[:3] == ["az", "account", "set"]:
             return CliResult(1, "", "no sub")
         return CliResult(0, "", "")
 
     with patch("executors.common.rq_job.validate_operation", return_value=op):
-        with patch("executors.common.rq_job.run_cli", side_effect=_cli_sub_fail):
-            status, _result, error = _run("azure", op, creds, {}, lambda *_a: None, lambda: False)
+        with patch("executors.common.rq_job.refresh_azure_cli_profile", return_value=""):
+            with patch("executors.common.rq_job.run_cli", side_effect=_cli_sub_fail):
+                status, _result, error = _run("azure", op, creds, {}, lambda *_a: None, lambda: False)
     assert status == "failed"
     assert "subscription" in error.lower()
 
     def _cli_sub_canceled(argv, _env, cancel_check=None):
-        if argv[:2] == ["az", "login"]:
-            return CliResult(0, "", "")
         if argv[:3] == ["az", "account", "set"]:
             return CliResult(0, "", "", canceled=True)
         return CliResult(0, "", "")
 
     with patch("executors.common.rq_job.validate_operation", return_value=op):
-        with patch("executors.common.rq_job.run_cli", side_effect=_cli_sub_canceled):
-            status, _result, error = _run("azure", op, creds, {}, lambda *_a: None, lambda: False)
+        with patch("executors.common.rq_job.refresh_azure_cli_profile", return_value=""):
+            with patch("executors.common.rq_job.run_cli", side_effect=_cli_sub_canceled):
+                status, _result, error = _run("azure", op, creds, {}, lambda *_a: None, lambda: False)
     assert status == "canceled"
 
 

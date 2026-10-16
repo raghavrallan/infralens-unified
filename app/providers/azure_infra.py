@@ -101,7 +101,8 @@ def is_connected(project_id: str) -> bool:
         return False
 
 
-def _get_token(creds: AzureCredentials, scope: str = _SCOPE) -> str:
+def _get_token_payload(creds: AzureCredentials, scope: str = _SCOPE) -> dict[str, Any]:
+    """Client-credentials token response. The secret stays in this HTTP body."""
     url = f"{_AUTHORITY}/{creds.tenant_id}/oauth2/v2.0/token"
     data = {
         "grant_type": "client_credentials",
@@ -116,7 +117,12 @@ def _get_token(creds: AzureCredentials, scope: str = _SCOPE) -> str:
     if resp.status_code != 200:
         detail = _error_detail(resp)
         raise AzureApiError(f"Azure authentication failed ({resp.status_code}): {detail}")
-    return resp.json().get("access_token", "")
+    body = resp.json()
+    return body if isinstance(body, dict) else {}
+
+
+def _get_token(creds: AzureCredentials, scope: str = _SCOPE) -> str:
+    return str(_get_token_payload(creds, scope).get("access_token") or "")
 
 
 def _error_detail(resp: httpx.Response) -> str:

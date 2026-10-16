@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from app.providers import azure_infra
+from app.providers import azure_cli, azure_estate, azure_infra
 from app.providers.azure_infra import AzureCredentials
 
 
@@ -234,3 +234,104 @@ def test_parse_status_targets_and_log_timespan():
     assert "2026-08-01" in span
     assert azure_infra._fmt_log_rows(["Time", "Msg"], [["t", "boom"]])
     assert azure_infra._fmt_log_rows(["Time"], []) == "(none)"
+
+
+_SUBSCRIPTION = "11111111-1111-4111-8111-111111111111"
+_CONNECTION = "a" * 32
+
+
+@pytest.mark.unit
+def test_fold_costs_matches_the_october_fixture():
+    days = azure_estate.each_day("2026-10-01", "2026-10-04")
+    folded = azure_estate.fold_costs(
+        [
+            {"UsageDate": 20261001, "ServiceName": "Virtual Machines", "Cost": 10, "Currency": "USD"},
+            {"UsageDate": 20261003, "ServiceName": "Virtual Machines", "Cost": 5, "Currency": "USD"},
+        ],
+        days,
+    )
+    assert len(folded["points"]) == 3
+    assert folded["points"][1]["spend"] == 0
+    assert folded["total"] == 15
+
+
+@pytest.mark.unit
+def test_operator_estate_does_not_send_a_cost_body():
+    azure_estate.clear_estate_cache()
+    calls: list[list[str]] = []
+
+    def runner(profile, args, **_kwargs):
+        calls.append(list(args))
+        return []
+
+    model = azure_estate.load_estate(
+        org_id="org-1",
+        project={"id": "proj-1", "name": "Estate", "budget_usd": None},
+        range_id="mtd",
+        can_see_cost=False,
+        fresh=True,
+        runner=runner,
+        prepare=lambda *_args, **_kwargs: None,
+        subscriptions=[
+            {
+                "id": _SUBSCRIPTION,
+                "name": "Sub",
+                "state": "Enabled",
+                "connection_id": _CONNECTION,
+            }
+        ],
+    )
+    blob = " ".join(" ".join(args) for args in calls)
+    assert "CostManagement" not in blob
+    assert "2023-11-01" not in blob
+    assert any(args[:2] == ["resource", "list"] for args in calls)
+    assert model["canSeeCost"] is False
+    assert model["kpis"]["spend"] is None
+    assert _SUBSCRIPTION in blob
+    assert "other-subscription" not in blob
+
+
+@pytest.mark.unit
+def test_allowlist_names_the_fifteen_read_tokens():
+    assert azure_cli.ALLOWED == {
+        "version",
+        "login",
+        "account",
+        "rest",
+        "resource",
+        "vm",
+        "group",
+        "databricks",
+        "storage",
+        "containerapp",
+        "aks",
+        "webapp",
+        "datafactory",
+        "advisor",
+        "monitor",
+    }
+
+
+@pytest.mark.unit
+def test_profile_refresh_uses_the_token_and_strips_host_env(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        azure_cli,
+        "_get_token_payload",
+        lambda creds, scope="https://management.azure.com/.default": {
+            "access_token": "token-value",
+            "expires_in": 3600,
+        },
+    )
+    profile = tmp_path / "profile"
+    azure_cli.ensure_profile(profile, AzureCredentials("tenant", "client", "secret-value"))
+    stored = (profile / "accessTokens.json").read_text(encoding="utf-8")
+    assert "token-value" in stored
+    assert "secret-value" not in stored
+    env = azure_cli.child_env(profile, {"AZURE_CLIENT_SECRET": "secret-value", "PATH": "/usr/bin"})
+    assert "AZURE_CLIENT_SECRET" not in env
+    assert env["AZURE_CONFIG_DIR"] == str(profile)
+    redacted = azure_cli.redact("Bearer abc secret-value\nline", "secret-value")
+    assert "Bearer [redacted]" in redacted
+    assert "secret-value" not in redacted
+    assert "\n" not in redacted
+    assert len(azure_cli.redact("x" * 900)) == 700

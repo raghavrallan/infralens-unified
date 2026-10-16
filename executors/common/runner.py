@@ -11,6 +11,15 @@ from typing import Mapping, Sequence
 from app.execution.validation import PROVIDERS, validate_operation
 
 MAX_OUTPUT = int(os.environ.get("EXECUTOR_MAX_OUTPUT", "200000"))
+_AZURE_CHILD_ENV = (
+    "AZURE_CLIENT_ID",
+    "AZURE_CLIENT_SECRET",
+    "AZURE_TENANT_ID",
+    "AZURE_CLIENT_CERTIFICATE_PATH",
+    "AZURE_SUBSCRIPTION_ID",
+    "AZURE_USERNAME",
+    "AZURE_PASSWORD",
+)
 _SECRET_PATTERNS = (
     re.compile(r"(?i)(client[_ -]?secret|secret[_ -]?access[_ -]?key|access[_ -]?token|password|token)\s*[:=]\s*([^\s,]+)"),
     re.compile(r"(?i)(authorization\s*:\s*bearer\s+)([^\s]+)"),
@@ -53,6 +62,14 @@ def _resolve_argv(argv: Sequence[str]) -> list[str]:
     return [executable, *argv[1:]]
 
 
+def _child_env(argv: Sequence[str], env: Mapping[str, str]) -> dict[str, str]:
+    child = dict(env)
+    if argv and argv[0] == "az":
+        for key in _AZURE_CHILD_ENV:
+            child.pop(key, None)
+    return child
+
+
 def run_cli(
     argv: Sequence[str], env: Mapping[str, str], timeout: int | None = None,
     cancel_check: Callable[[], bool] | None = None,
@@ -75,7 +92,7 @@ def run_cli(
             completed = subprocess.run(
                 resolved_argv, shell=False, capture_output=True, text=True,
                 timeout=timeout or int(os.environ.get("EXECUTOR_TIMEOUT", "300")),
-                env=dict(env), check=False,
+                env=_child_env(argv, env), check=False,
             )
         except subprocess.TimeoutExpired as exc:
             return CliResult(-1, redact(str(exc.stdout or "")), redact(str(exc.stderr or "")), True)
@@ -90,7 +107,7 @@ def run_cli(
     try:
         process = subprocess.Popen(
             resolved_argv, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, env=dict(env),
+            text=True, env=_child_env(argv, env),
         )
         deadline = __import__("time").monotonic() + (timeout or int(os.environ.get("EXECUTOR_TIMEOUT", "300")))
         while True:

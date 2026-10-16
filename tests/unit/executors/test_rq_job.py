@@ -150,26 +150,26 @@ def test_run_azure_login_then_step():
     calls = []
 
     def fake_cli(argv, _env, cancel_check=None):
-        calls.append(argv[1] if len(argv) > 1 else argv[0])
-        if argv[:2] == ["az", "login"]:
-            return CliResult(0, "", "")
+        calls.append(list(argv))
         if argv[:3] == ["az", "account", "set"]:
             return CliResult(0, "", "")
         return CliResult(0, "{}", "")
 
     with patch("executors.common.rq_job.validate_operation", return_value=op):
         with patch("executors.common.rq_job.command_argv", return_value=["az", "account", "show"]):
-            with patch("executors.common.rq_job.run_cli", side_effect=fake_cli):
-                status, result, error = _run(
-                    "azure",
-                    op,
-                    {"client_id": "c", "client_secret": "s", "tenant_id": "t", "subscription_id": "sub"},
-                    {},
-                    lambda *_a: None,
-                    lambda: False,
-                )
+            with patch("executors.common.rq_job.refresh_azure_cli_profile", return_value=""):
+                with patch("executors.common.rq_job.run_cli", side_effect=fake_cli):
+                    status, result, error = _run(
+                        "azure",
+                        op,
+                        {"client_id": "c", "client_secret": "s", "tenant_id": "t", "subscription_id": "sub"},
+                        {},
+                        lambda *_a: None,
+                        lambda: False,
+                    )
     assert status == "succeeded"
-    assert "login" in calls
+    assert any(argv[:3] == ["az", "account", "set"] for argv in calls)
+    assert all("--" + "password" not in argv for argv in calls)
 
 
 @pytest.mark.unit
