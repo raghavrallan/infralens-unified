@@ -25,9 +25,9 @@ function EngineeringBody() {
   );
 }
 
-export function DashboardEngineeringPage() {
+export function DashboardEngineeringPage({ embedded = false }: { embedded?: boolean }) {
   return (
-    <DashboardShell title="Engineering">
+    <DashboardShell title="Engineering" embedded={embedded}>
       <EngineeringBody />
     </DashboardShell>
   );

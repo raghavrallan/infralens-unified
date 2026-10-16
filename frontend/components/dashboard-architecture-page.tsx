@@ -132,9 +132,9 @@ function ArchitectureBody() {
   );
 }
 
-export function DashboardArchitecturePage() {
+export function DashboardArchitecturePage({ embedded = false }: { embedded?: boolean }) {
   return (
-    <DashboardShell title="Architecture">
+    <DashboardShell title="Architecture" embedded={embedded}>
       <ArchitectureBody />
     </DashboardShell>
   );

@@ -156,6 +156,8 @@ const NAV: Array<
   { href: "/dashboard/workflows", label: "Workflows" },
   { href: "/dashboard/approvals", label: "Approvals" },
   { href: "/dashboard/break-glass", label: "Break-glass" },
+  { href: "/dashboard/architecture", label: "Architecture" },
+  { href: "/dashboard/engineering", label: "Engineering" },
 ];
 
 function active(href: string, pathname: string, search: URLSearchParams): boolean {
