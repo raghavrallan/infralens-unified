@@ -75,11 +75,11 @@ class ExecutionValidationTests(unittest.TestCase):
         self.assertFalse(compound_result_complete(operation, {"stdout": "resource group created"}))
         self.assertTrue(compound_result_complete(operation, {"steps": [{"step": 1}, {"step": 2}]}))
 
+    @patch("executors.common.rq_job.refresh_azure_cli_profile", return_value="")
     @patch("executors.common.rq_job.run_cli")
-    def test_existing_parent_is_skipped_and_child_still_runs(self, run):
+    def test_existing_parent_is_skipped_and_child_still_runs(self, run, _refresh):
         run.side_effect = [
-            CliResult(0, "", ""),
-            CliResult(0, "", ""),  # Azure login and subscription
+            CliResult(0, "", ""),  # Azure subscription
             CliResult(0, "true\n", ""),
             CliResult(0, "{}", ""),  # existing resource group verification
             CliResult(0, "0\n", ""),
@@ -98,16 +98,16 @@ class ExecutionValidationTests(unittest.TestCase):
         self.assertEqual(status, "succeeded")
         self.assertTrue(result["steps"][0]["skipped"])
         self.assertEqual(len(result["steps"]), 2)
-        self.assertEqual(run.call_args_list[5].args[0][:3], ["az", "network", "nsg"])
+        self.assertEqual(run.call_args_list[4].args[0][:3], ["az", "network", "nsg"])
         self.assertEqual(error, "")
 
         legacy_step = {key: value for key, value in operation["steps"][0].items() if key != "skip_if_exists"}
         self.assertTrue(_preflight_found_existing(legacy_step, CliResult(0, "true\n", "")))
 
+    @patch("executors.common.rq_job.refresh_azure_cli_profile", return_value="")
     @patch("executors.common.rq_job.run_cli")
-    def test_existing_parent_is_skipped_for_vnet_without_shell_syntax_error(self, run):
+    def test_existing_parent_is_skipped_for_vnet_without_shell_syntax_error(self, run, _refresh):
         run.side_effect = [
-            CliResult(0, "", ""),  # Azure login
             CliResult(0, "", ""),  # Azure subscription
             CliResult(0, "true\n", ""),  # resource group exists
             CliResult(0, "{}", ""),  # existing resource-group verification

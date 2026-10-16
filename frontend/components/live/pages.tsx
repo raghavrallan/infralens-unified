@@ -282,6 +282,82 @@ function ExecutorPanel({ orgId }: { orgId: string }) {
   );
 }
 
+function InvitePanel({ orgId }: { orgId: string }) {
+  const [email, setEmail] = useState("");
+  const [note, setNote] = useState("");
+  if (!orgId) return null;
+  return (
+    <Panel title="Invites">
+      <form
+        className="flex flex-wrap items-end gap-3"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const response = await fetch(`/api/orgs/${orgId}/invites`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, invited_role: "developer", org_role: "member" }),
+          });
+          setNote(response.ok ? "Invite created." : "Could not create the invite.");
+          if (response.ok) setEmail("");
+        }}
+      >
+        <label className="text-sm">Email
+          <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 h-11 rounded-2xl border border-[#e7e5e4] px-3" />
+        </label>
+        <button type="submit" className="h-11 rounded-2xl bg-[#E2773C] px-4 text-sm font-semibold text-white">Send invite</button>
+      </form>
+      {note ? <p className="mt-2 text-sm">{note}</p> : null}
+    </Panel>
+  );
+}
+
+function MembershipPanel({ orgId }: { orgId: string }) {
+  const [rows, setRows] = useState<Array<{ id: string; target_email?: string; action?: string; status?: string }>>([]);
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (!orgId) return;
+    void fetch(`/api/orgs/${orgId}/member-requests`, { credentials: "include" })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const body = (await response.json()) as Array<{ id: string; target_email?: string; action?: string; status?: string }>;
+        setRows(Array.isArray(body) ? body : []);
+      })
+      .catch(() => undefined);
+  }, [orgId, note]);
+
+  if (!orgId) return null;
+  return (
+    <Panel title="Membership approval">
+      {rows.length === 0 ? <p className="text-sm text-[#717171]">No pending membership requests.</p> : null}
+      <ul className="space-y-2 text-sm">
+        {rows.map((row) => (
+          <li key={row.id} className="flex flex-wrap items-center gap-2">
+            <span>{row.target_email || row.id} · {row.action} · {row.status}</span>
+            {row.status === "pending" ? (
+              <>
+                <button type="button" className="rounded-xl border px-2 py-1" onClick={() => void decide(row.id, "approved")}>Approve</button>
+                <button type="button" className="rounded-xl border px-2 py-1" onClick={() => void decide(row.id, "rejected")}>Reject</button>
+              </>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </Panel>
+  );
+
+  async function decide(id: string, decision: "approved" | "rejected") {
+    const response = await fetch(`/api/member-requests/${id}/decide`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision }),
+    });
+    setNote(response.ok ? `${decision} ${id}` : "Could not decide that request.");
+  }
+}
+
 export function OrganizationPage() {
   const { model, refresh } = useConsole();
   const data = model?.workspace;
@@ -349,6 +425,8 @@ export function OrganizationPage() {
             </ul>
           </Panel>
           <ExecutorPanel orgId={data.org?.id || ""} />
+          <InvitePanel orgId={data.org?.id || ""} />
+          <MembershipPanel orgId={data.org?.id || ""} />
         </>
       )}
     </div>

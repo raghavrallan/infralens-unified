@@ -989,23 +989,22 @@ def accept_invite(body: InviteAcceptRequest) -> Any:
             display_name=body.display_name,
             username=body.username,
         )
-        # Auto-login session
-        session = auth.authenticate(result["username"], body.password)
-        if session:
-            result["session"] = session
-            user = session["user"]
-            token = auth.create_browser_session(
-                str(user["id"]),
-                user.get("org_id") or user.get("primary_org_id"),
-            )
-            response = JSONResponse(result)
-            response.set_cookie(**auth.browser_cookie(token))
-            return response
-        return result
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    session = auth.authenticate(result["username"], body.password)
+    user = (session or {}).get("user") or {}
+    if session and user.get("id"):
+        result["session"] = session
+        cookie = auth.create_browser_session(
+            str(user["id"]),
+            user.get("org_id") or user.get("primary_org_id"),
+        )
+        response = JSONResponse(result)
+        response.set_cookie(**auth.browser_cookie(cookie))
+        return response
+    return result
 
 
 @router.get("/api/projects/{project_id}/members")

@@ -530,9 +530,7 @@ def test_invite_expiry_users_admin_union_and_openai_not_configured(
     token = created.get("accept_token")
     if token:
         with SessionLocal() as session:
-            row = session.scalar(
-                select(Invite).where(Invite.email == "expiree@example.com")
-            )
+            row = session.get(Invite, created["id"])
             if row is not None:
                 row.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
                 session.commit()
