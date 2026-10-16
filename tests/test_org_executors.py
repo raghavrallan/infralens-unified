@@ -80,6 +80,13 @@ def test_queue_names_are_org_scoped():
     assert exec_queue.queue_name(org_a, "azure", "write") == (
         "org.org-aaa.provider.azure.write"
     )
+    for provider in ("aws", "github"):
+        assert exec_queue.queue_name(org_a, provider, "read_only") == (
+            f"org.org-aaa.provider.{provider}.read"
+        )
+        assert exec_queue.queue_name(org_a, provider, "write") == (
+            f"org.org-aaa.provider.{provider}.write"
+        )
     assert exec_queue.queue_name(org_a, "azure", "read_only") != exec_queue.queue_name(
         org_b, "azure", "read_only"
     )

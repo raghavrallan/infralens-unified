@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.providers import aws_infra, github_infra
+from app.providers import aws_infra, github_git, github_infra
 
 
 @pytest.mark.unit
@@ -34,6 +34,14 @@ def test_github_list_repo_names_uses_httpx():
                 names = None
     if names is not None:
         assert "octo/one" in names or names == ["octo/one", "octo/two"] or True
+
+
+@pytest.mark.unit
+def test_assert_mapped_rejects_a_repo_outside_the_project_list():
+    with patch("app.providers.github_git.projects.get_repos", return_value=["acme/allowed"]):
+        github_git.assert_mapped("p1", "acme/allowed")
+        with pytest.raises(ValueError, match="outside"):
+            github_git.assert_mapped("p1", "acme/other")
 
 
 @pytest.mark.unit

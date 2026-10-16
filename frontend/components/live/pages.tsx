@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { CostBars, DonutLegend, SpendArea, SplitDonut, UsageLines } from "./charts";
 import { useConsole } from "./console";
 import type { EstateModel } from "./types";
@@ -224,6 +224,64 @@ export function AdvisorPage() {
   return <TablePage title="Advisor" description="Azure Advisor recommendations for the attached subscriptions. These are not generated locally." rows={rows} />;
 }
 
+function ExecutorPanel({ orgId }: { orgId: string }) {
+  const [mode, setMode] = useState("on_demand");
+  const [windowHours, setWindowHours] = useState("12");
+  const [state, setState] = useState("");
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (!orgId) return;
+    void fetch(`/api/orgs/${orgId}/executor-settings`, { credentials: "include" })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const body = (await response.json()) as { mode?: string; window_hours?: number; actual_state?: string };
+        if (body.mode) setMode(body.mode);
+        if (body.window_hours) setWindowHours(String(body.window_hours));
+        if (body.actual_state) setState(body.actual_state);
+      })
+      .catch(() => undefined);
+  }, [orgId]);
+
+  if (!orgId) return null;
+  return (
+    <Panel title="Executor pool">
+      <p className="mb-3 text-sm text-[#717171]">On demand, a timed window, or a schedule. Window length is 6, 12, or 24 hours.</p>
+      <form
+        className="flex flex-wrap items-end gap-3"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const response = await fetch(`/api/orgs/${orgId}/executor-settings`, {
+            method: "PUT",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode, window_hours: Number(windowHours) }),
+          });
+          setNote(response.ok ? "Executor settings saved." : "Could not save executor settings.");
+        }}
+      >
+        <label className="text-sm">Mode
+          <select className="mt-1 block h-11 rounded-2xl border border-[#e7e5e4] px-3" value={mode} onChange={(event) => setMode(event.target.value)}>
+            <option value="on_demand">On demand</option>
+            <option value="window">Window</option>
+            <option value="schedule">Schedule</option>
+          </select>
+        </label>
+        <label className="text-sm">Window hours
+          <select className="mt-1 block h-11 rounded-2xl border border-[#e7e5e4] px-3" value={windowHours} onChange={(event) => setWindowHours(event.target.value)}>
+            <option value="6">6</option>
+            <option value="12">12</option>
+            <option value="24">24</option>
+          </select>
+        </label>
+        <button type="submit" className="h-11 rounded-2xl bg-[#E2773C] px-4 text-sm font-semibold text-white">Save pool</button>
+      </form>
+      {state ? <p className="mt-2 text-xs text-[#717171]">State {state}</p> : null}
+      {note ? <p className="mt-2 text-sm">{note}</p> : null}
+    </Panel>
+  );
+}
+
 export function OrganizationPage() {
   const { model, refresh } = useConsole();
   const data = model?.workspace;
@@ -290,6 +348,7 @@ export function OrganizationPage() {
               ))}
             </ul>
           </Panel>
+          <ExecutorPanel orgId={data.org?.id || ""} />
         </>
       )}
     </div>
