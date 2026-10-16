@@ -609,6 +609,7 @@ export function ChatPage() {
     try {
       const response = await fetch(apiUrl(url), {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify(body),
         signal: controller.signal,

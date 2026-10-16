@@ -96,6 +96,8 @@ _PUBLIC_API_PATHS = frozenset(
     {
         "/api/health",
         "/api/auth/login",
+        "/api/auth/logout",
+        "/api/signup",
         "/api/invites/peek",
         "/api/invites/accept",
         "/api/member-requests/decide-email",
@@ -134,6 +136,7 @@ class JwtAuthMiddleware:
         path = request.url.path.rstrip("/") or "/"
         if path.startswith("/api") and path not in _PUBLIC_API_PATHS:
             token = auth.bearer_token(request.headers.get("Authorization"))
+            cookie = request.cookies.get(auth.SESSION_COOKIE)
             integrations_key = (os.environ.get("INTEGRATIONS_API_KEY") or "").strip()
             user: Optional[dict[str, Any]] = None
             if (
@@ -148,8 +151,12 @@ class JwtAuthMiddleware:
                     "display_name": "n8n integration",
                     "role": os.environ.get("INTEGRATIONS_API_ROLE", "devops_lead"),
                 }
-            else:
+            elif token:
                 user = auth.verify_token(token)
+            elif cookie:
+                # Browser sessions are the Postgres row. AUTH_VERIFY_DB is not
+                # the org check for this path.
+                user = auth.user_from_browser_session(cookie)
             if user is None:
                 response = JSONResponse({"detail": "Not authenticated"}, status_code=401)
                 await response(scope, receive, send)
@@ -160,9 +167,9 @@ class JwtAuthMiddleware:
                 and path not in _VIEWER_WRITE_ALLOW
                 and not path.endswith("/oauth/callback")
             ):
-                from app.core.rbac import has_min_role
+                from app.core.rbac import has_min_role, suite_role
 
-                if not has_min_role(user.get("role"), "developer"):
+                if not has_min_role(suite_role(user), "developer"):
                     response = JSONResponse(
                         {"detail": "Viewer role is read-only"},
                         status_code=403,
@@ -175,10 +182,23 @@ class JwtAuthMiddleware:
 # Last-added middleware is outermost. CORS must wrap JWT auth so browser
 # clients on :3000 still receive Access-Control-* headers on 401/403 short-circuits.
 app.add_middleware(JwtAuthMiddleware)
+_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+_extra_origins = os.environ.get("CORS_ORIGINS", "")
+if _extra_origins.strip():
+    _CORS_ORIGINS.extend(
+        item.strip() for item in _extra_origins.split(",") if item.strip()
+    )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -287,8 +307,17 @@ class ActionDecisionRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str
+    username: str = ""
+    email: str = ""
     password: str
+
+
+class SignupRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+    orgName: str = ""
+    org_name: str = ""
 
 
 class ExecutorEventRequest(BaseModel):
@@ -407,13 +436,53 @@ def put_azure_config_route(
     return get_azure_config_route(user)
 
 
+def _json_with_browser_session(payload: dict[str, Any], user_id: str, org_id: Optional[str]) -> JSONResponse:
+    """Return JSON and set the httpOnly session cookie."""
+    token = auth.create_browser_session(user_id, org_id)
+    response = JSONResponse(payload)
+    response.set_cookie(**auth.browser_cookie(token))
+    return response
+
+
 @app.post("/api/auth/login")
-def login(body: LoginRequest) -> dict[str, Any]:
-    """Authenticate against the users table and return a JWT."""
-    session = auth.authenticate(body.username, body.password)
+def login(body: LoginRequest) -> JSONResponse:
+    """Authenticate and return a JWT. Browsers also receive the session cookie."""
+    session = auth.authenticate(body.username or body.email, body.password)
     if session is None:
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    return session
+    user = session["user"]
+    return _json_with_browser_session(
+        session,
+        str(user["id"]),
+        user.get("org_id") or user.get("primary_org_id"),
+    )
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request) -> JSONResponse:
+    """Delete the Postgres session row and clear the browser cookie."""
+    auth.destroy_browser_session(request.cookies.get(auth.SESSION_COOKIE))
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(auth.SESSION_COOKIE, path="/")
+    return response
+
+
+@app.post("/api/signup")
+def signup(body: SignupRequest) -> JSONResponse:
+    """Public signup. The new user owns only the organization this call creates."""
+    from app.tenancy import orgs
+    from app.tenancy.access import AccessError
+
+    try:
+        created = orgs.signup_organization(
+            name=body.name,
+            org_name=body.orgName or body.org_name,
+            email=body.email,
+            password=body.password,
+        )
+    except AccessError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return _json_with_browser_session({"ok": True}, created["user_id"], created["org_id"])
 
 
 @app.get("/api/auth/me")

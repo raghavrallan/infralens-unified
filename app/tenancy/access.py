@@ -1,9 +1,8 @@
 """Org isolation for Azure connections, subscriptions, and project visibility.
 
-This is the Postgres port of infralens-live ``src/lib/access.js`` and the live
-permission checks those assertions use. Suite RBAC stays in ``app/core/rbac.py``
-until the session phase merges the two ladders. Live project roles are stored
-as themselves; they are not passed through ``normalize_role``.
+This is the Postgres port of infralens-live ``src/lib/access.js``. Live
+permission checks live in ``app.core.rbac.live_can``. Live project roles are
+stored as themselves; they are not passed through ``normalize_role``.
 """
 from __future__ import annotations
 
@@ -24,21 +23,21 @@ from app.core.db import (
     SessionLocal,
     Subscription,
 )
+from app.core.rbac import (
+    LIVE_ORG_ROLES,
+    LIVE_PROJECT_ROLES,
+    is_org_manager,
+    live_can,
+)
 from app.platform.secret_box import decrypt, encrypt
+
+ORG_ROLES = LIVE_ORG_ROLES
+PROJECT_ROLES = LIVE_PROJECT_ROLES
 
 _GUID = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     re.IGNORECASE,
 )
-ORG_ROLES = ("org_owner", "org_admin", "member")
-PROJECT_ROLES = ("project_admin", "billing_reader", "operator", "viewer")
-_ORG_ONLY = frozenset({"connection.manage", "members.manage", "project.create"})
-_PROJECT_PERMISSIONS = {
-    "project_admin": ("project.read", "billing.read", "resources.read", "project.manage"),
-    "billing_reader": ("project.read", "billing.read", "resources.read"),
-    "operator": ("project.read", "resources.read"),
-    "viewer": ("project.read", "billing.read", "resources.read"),
-}
 
 
 class AccessError(Exception):
@@ -49,23 +48,13 @@ class AccessError(Exception):
         self.status = status
 
 
-def is_guid(value: object) -> bool:
-    return _GUID.fullmatch(str(value or "").strip()) is not None
-
-
-def is_org_manager(role: Optional[str]) -> bool:
-    return role in {"org_owner", "org_admin"}
-
-
 def can(org_role: Optional[str], project_role: Optional[str], permission: str) -> bool:
     """Live permission check. An operator cannot read billing. A viewer can."""
-    if permission in _ORG_ONLY:
-        return is_org_manager(org_role)
-    if is_org_manager(org_role):
-        return True
-    if not project_role:
-        return False
-    return permission in _PROJECT_PERMISSIONS.get(project_role, ())
+    return live_can(org_role, project_role, permission)
+
+
+def is_guid(value: object) -> bool:
+    return _GUID.fullmatch(str(value or "").strip()) is not None
 
 
 def _budget(value: Any) -> Optional[float]:

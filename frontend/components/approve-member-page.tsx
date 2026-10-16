@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
-import { getToken } from "../lib/auth";
+import { getStoredUser } from "../lib/auth";
 import { ThemeToggle } from "./theme-toggle";
 
 export function ApproveMemberPage() {
@@ -16,7 +16,7 @@ export function ApproveMemberPage() {
       setMessage("Missing approval token or request id.");
       return;
     }
-    const authed = Boolean(getToken());
+    const authed = Boolean(getStoredUser());
     void (async () => {
       try {
         if (authed) {

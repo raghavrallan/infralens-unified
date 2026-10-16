@@ -90,3 +90,114 @@ def test_roles_endpoint(client, developer):
     ids = {row["id"] for row in response.json()}
     assert "super_admin" in ids
     assert "viewer" in ids
+
+
+def test_logout_deletes_the_session_row(client, make_user):
+    from app.core import auth
+    from app.core.db import LoginSession, SessionLocal
+
+    user = make_user(role="developer", password="secret12")
+    response = client.post(
+        "/api/auth/login",
+        json={"username": user["username"], "password": "secret12"},
+    )
+    assert response.status_code == 200
+    cookie = response.cookies.get("il_session")
+    assert cookie
+    digest = auth.session_token_hash(cookie)
+    with SessionLocal() as session:
+        row = session.get(LoginSession, digest)
+        assert row is not None
+        assert row.user_id == user["id"]
+    client.cookies.clear()
+    client.cookies.set("il_session", cookie)
+    me = client.get("/api/auth/me")
+    assert me.status_code == 200
+    assert me.json()["user"]["id"] == user["id"]
+    gone = client.post("/api/auth/logout")
+    assert gone.status_code == 200
+    with SessionLocal() as session:
+        assert session.get(LoginSession, digest) is None
+    assert client.get("/api/auth/me").status_code == 401
+
+
+def test_expired_session_is_rejected(client, make_user):
+    from datetime import datetime, timedelta, timezone
+
+    from app.core import auth
+    from app.core.db import LoginSession, SessionLocal
+
+    user = make_user(role="developer")
+    cookie = auth.create_browser_session(user["id"], None)
+    with SessionLocal() as session:
+        row = session.get(LoginSession, auth.session_token_hash(cookie))
+        assert row is not None
+        row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=30)
+        session.commit()
+    client.cookies.set("il_session", cookie)
+    assert client.get("/api/auth/me").status_code == 401
+
+
+def test_cookie_session_hides_another_org(client, make_user):
+    from app.core import auth
+    from app.tenancy import memberships, orgs, projects
+
+    user = make_user(role="viewer")
+    org_a = orgs.create_org(name=f"OrgA-{user['id'][:8]}", created_by=user["id"])
+    org_b = orgs.create_org(name=f"OrgB-{user['id'][:8]}", created_by=user["id"])
+    projects.create_project("Visible", org_id=org_a["id"], owner_user_id=user["id"])
+    projects.create_project("Hidden", org_id=org_b["id"], owner_user_id=user["id"])
+    memberships.ensure_org_membership(
+        org_id=org_a["id"], user_id=user["id"], org_role="org_owner"
+    )
+    memberships.ensure_org_membership(
+        org_id=org_b["id"], user_id=user["id"], org_role="org_admin"
+    )
+    cookie = auth.create_browser_session(user["id"], org_a["id"])
+    client.cookies.set("il_session", cookie)
+    foreign = client.get(f"/api/orgs/{org_b['id']}/projects")
+    assert foreign.status_code == 200
+    assert foreign.json() == []
+    own = client.get(f"/api/orgs/{org_a['id']}/projects")
+    assert own.status_code == 200
+    assert any(row["name"] == "Visible" for row in own.json())
+    listed = client.get("/api/orgs")
+    assert [row["id"] for row in listed.json()] == [org_a["id"]]
+
+
+def test_signup_creates_owner_and_cannot_see_or_create_another_org(client, make_user):
+    from app.tenancy import orgs
+
+    admin = make_user(role="super_admin")
+    other = orgs.create_org(name=f"Existing-{admin['id'][:8]}", created_by=admin["id"])
+    email = f"ada-{admin['id'][:8]}@example.com"
+    response = client.post(
+        "/api/signup",
+        json={
+            "name": "Ada Lovelace",
+            "orgName": "Ada Org",
+            "email": email,
+            "password": "password1",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert response.cookies.get("il_session")
+    assert "password" not in response.text
+    listed = client.get("/api/orgs")
+    assert listed.status_code == 200
+    ids = [row["id"] for row in listed.json()]
+    assert other["id"] not in ids
+    assert len(ids) == 1
+    denied = client.post("/api/orgs", json={"name": "Sibling"})
+    assert denied.status_code == 403
+
+
+def test_operator_bearer_cannot_write(client, make_user):
+    user = make_user(role="operator", password="secret12")
+    response = client.post(
+        "/api/projects",
+        json={"name": "blocked-operator"},
+        headers={"Authorization": f"Bearer {user['token']}"},
+    )
+    assert response.status_code == 403

@@ -61,21 +61,117 @@ GATE_MIN_ROLE: dict[str, str] = {
     "two_person": "devops_lead",
 }
 
+# Live org and project roles. They are not suite ladder rungs.
+LIVE_ORG_ROLES: tuple[str, ...] = ("org_owner", "org_admin", "member")
+LIVE_PROJECT_ROLES: tuple[str, ...] = (
+    "project_admin",
+    "billing_reader",
+    "operator",
+    "viewer",
+)
+LIVE_ROLE_LABELS: dict[str, str] = {
+    "org_owner": "Organization owner",
+    "org_admin": "Organization admin",
+    "member": "Member",
+    "project_admin": "Project admin",
+    "billing_reader": "Billing reader",
+    "operator": "Operator",
+    "viewer": "Viewer",
+}
+_LIVE_ONLY_ROLES = frozenset(
+    {"org_owner", "member", "project_admin", "billing_reader", "operator"}
+)
+_ORG_ONLY_PERMISSIONS = frozenset(
+    {"connection.manage", "members.manage", "project.create"}
+)
+_PROJECT_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    "project_admin": ("project.read", "billing.read", "resources.read", "project.manage"),
+    "billing_reader": ("project.read", "billing.read", "resources.read"),
+    "operator": ("project.read", "resources.read"),
+    "viewer": ("project.read", "billing.read", "resources.read"),
+}
+_ROLE_ALIASES = {
+    "admin": "super_admin",
+    "superadmin": "super_admin",
+    "orgadmin": "org_admin",
+    "lead": "devops_lead",
+    "engineer": "devops_engineer",
+    "dev": "developer",
+    "readonly": "viewer",
+    "read_only": "viewer",
+}
+
+
+def _raw_role(role: Optional[str]) -> str:
+    return (role or "").strip().lower().replace(" ", "_").replace("-", "_")
+
 
 def normalize_role(role: Optional[str]) -> str:
-    value = (role or "developer").strip().lower().replace(" ", "_").replace("-", "_")
-    aliases = {
-        "admin": "super_admin",
-        "superadmin": "super_admin",
-        "orgadmin": "org_admin",
-        "lead": "devops_lead",
-        "engineer": "devops_engineer",
-        "dev": "developer",
-        "readonly": "viewer",
-        "read_only": "viewer",
-    }
-    value = aliases.get(value, value)
+    value = _ROLE_ALIASES.get(_raw_role(role or "developer"), _raw_role(role or "developer"))
     return value if value in ROLE_LABELS else "developer"
+
+
+def presented_role(role: Optional[str]) -> str:
+    """Role stored on a session payload.
+
+    ``normalize_role`` maps unknown names, including live ``operator``, to
+    developer. Capability checks must still see the live name.
+    """
+    raw = _ROLE_ALIASES.get(_raw_role(role), _raw_role(role))
+    if raw in _LIVE_ONLY_ROLES or raw in ROLE_LABELS:
+        return raw
+    return normalize_role(role)
+
+
+def suite_role(user: dict[str, Any]) -> str:
+    """Suite rung used for capability checks.
+
+    A live role such as ``operator`` is not passed through ``normalize_role``,
+    so the developer default cannot grant writes or billing. ``org_owner``
+    receives org-admin powers and does not become ``super_admin``.
+    """
+    raw = _ROLE_ALIASES.get(_raw_role(str(user.get("role") or "")), _raw_role(str(user.get("role") or "")))
+    if raw in _LIVE_ONLY_ROLES:
+        base = "viewer"
+    elif raw in ROLE_LABELS:
+        base = raw
+    else:
+        base = "developer"
+    if base == "super_admin":
+        return base
+    org_role = _raw_role(str(user.get("org_role") or ""))
+    if org_role in {"org_owner", "org_admin"} and role_rank(base) < role_rank("org_admin"):
+        return "org_admin"
+    return base
+
+
+def is_org_manager(role: Optional[str]) -> bool:
+    return _raw_role(role) in {"org_owner", "org_admin"}
+
+
+def live_can(
+    org_role: Optional[str],
+    project_role: Optional[str],
+    permission: str,
+) -> bool:
+    """Live permission. Operator cannot read billing. Viewer can. No project role fails."""
+    if permission in _ORG_ONLY_PERMISSIONS:
+        return is_org_manager(org_role)
+    if is_org_manager(org_role):
+        return True
+    if not project_role:
+        return False
+    return permission in _PROJECT_PERMISSIONS.get(_raw_role(project_role), ())
+
+
+def role_label(role: Optional[str]) -> str:
+    """Live labels, then the suite labels. Viewer is the same word on both."""
+    key = _raw_role(role)
+    if key in LIVE_ROLE_LABELS and key != "viewer":
+        return LIVE_ROLE_LABELS[key]
+    if key in ROLE_LABELS:
+        return ROLE_LABELS[key]
+    return ROLE_LABELS.get(normalize_role(role), "Developer")
 
 
 def role_rank(role: Optional[str]) -> int:
@@ -91,7 +187,7 @@ def has_min_role(user_role: Optional[str], minimum: str) -> bool:
 
 def can(user: dict[str, Any], capability: str) -> bool:
     minimum = CAPABILITY_MIN_ROLE.get(capability, "super_admin")
-    return has_min_role(user.get("role"), minimum)
+    return has_min_role(suite_role(user), minimum)
 
 
 def can_approve_gate(user: dict[str, Any], gate: str) -> bool:

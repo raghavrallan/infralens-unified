@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { api } from "../lib/api";
-import { fetchCurrentUser, getToken } from "../lib/auth";
+import { fetchCurrentUser } from "../lib/auth";
 import { GlobalLoader } from "./global-loader";
 
 function skipKey(userId?: string) {
@@ -26,20 +26,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const token = getToken();
-        if (!token) {
-          window.location.replace("/login/");
-          return;
-        }
         const current = await fetchCurrentUser();
         if (cancelled) return;
         if (!current) {
-          // Token present but /me failed — only bounce when session was cleared (401).
-          if (!getToken()) {
-            window.location.replace("/login/");
-          } else if (!cancelled) {
-            setReady(true);
-          }
+          window.location.replace("/login/");
           return;
         }
 

@@ -31,6 +31,7 @@ export async function api<T>(url: string, options?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(apiUrl(url), {
+      credentials: "include",
       ...options,
       headers: {
         ...(options?.body && !isForm ? { "Content-Type": "application/json" } : {}),
@@ -51,7 +52,13 @@ export async function api<T>(url: string, options?: RequestInit): Promise<T> {
   }
   if (response.status === 401 && !url.includes("/api/auth/login")) {
     clearAuthStorage();
-    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    const path = typeof window !== "undefined" ? window.location.pathname : "";
+    const stay =
+      path.startsWith("/login") ||
+      path.startsWith("/signup") ||
+      path.startsWith("/accept-invite") ||
+      path.startsWith("/approve-member");
+    if (typeof window !== "undefined" && !stay) {
       window.location.replace("/login/");
     }
     throw new Error("Not authenticated");

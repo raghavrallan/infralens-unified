@@ -15,7 +15,7 @@ from app.core.db import (
     SessionLocal,
     User,
 )
-from app.core.rbac import has_min_role, normalize_role
+from app.core.rbac import ROLE_LABELS, has_min_role, normalize_role, role_rank, suite_role
 
 
 def is_super_admin(user: dict[str, Any]) -> bool:
@@ -36,7 +36,7 @@ def is_org_admin(user: dict[str, Any], org_id: str) -> bool:
     if is_super_admin(user):
         return True
     row = org_membership(str(user.get("id") or ""), org_id)
-    return bool(row and row.org_role == "org_admin")
+    return bool(row and row.org_role in {"org_admin", "org_owner"})
 
 
 def user_org_ids(user_id: str) -> list[str]:
@@ -247,17 +247,30 @@ def assert_org_admin(user: dict[str, Any], org_id: str) -> None:
         raise HTTPException(status_code=403, detail="Org Admin required")
 
 
+_LIVE_PROJECT_ONLY = frozenset({"project_admin", "billing_reader", "operator"})
+
+
 def effective_role_for_project(user: dict[str, Any], project_id: str) -> str:
-    """Highest of global role, org_admin (as org_admin), and project_role."""
-    global_role = normalize_role(user.get("role"))
+    """Highest of the suite role and a real suite project role.
+
+    Live project roles stay at viewer so ``operator`` is not promoted to developer.
+    """
+    global_role = suite_role(user)
     if global_role == "super_admin":
         return "super_admin"
     org_id = project_org_id(project_id)
-    if org_id and is_org_admin(user, org_id):
-        return "org_admin"
+    if org_id and is_org_admin(user, org_id) and role_rank(global_role) < role_rank("org_admin"):
+        global_role = "org_admin"
     membership = project_membership(str(user.get("id") or ""), project_id)
-    if membership:
-        return normalize_role(membership.project_role)
+    if membership is None:
+        return global_role
+    raw = (membership.project_role or "").strip().lower()
+    if raw in _LIVE_PROJECT_ONLY:
+        project_role = "viewer"
+    else:
+        project_role = normalize_role(raw)
+    if role_rank(project_role) > role_rank(global_role):
+        return project_role
     return global_role
 
 
@@ -278,9 +291,10 @@ def primary_org_id(user: dict[str, Any]) -> Optional[str]:
         ).all()
         if not rows:
             return None
-        for row in rows:
-            if row.org_role == "org_admin":
-                return row.org_id
+        for preferred in ("org_owner", "org_admin"):
+            for row in rows:
+                if row.org_role == preferred:
+                    return row.org_id
         return rows[0].org_id
 
 
@@ -318,7 +332,7 @@ def list_accessible_project_rows(user: dict[str, Any]) -> list[Project]:
             for m in session.scalars(
                 select(OrgMembership).where(
                     OrgMembership.user_id == user_id,
-                    OrgMembership.org_role == "org_admin",
+                    OrgMembership.org_role.in_(("org_admin", "org_owner")),
                 )
             ).all()
         ]
@@ -358,12 +372,13 @@ def enrich_user_public(user: dict[str, Any]) -> dict[str, Any]:
             org_role = membership.org_role
     out["org_role"] = org_role
     # Effective label for shell: Org Admin if they admin an org, else global role.
-    from app.core.rbac import ROLE_LABELS, normalize_role
-
     global_role = normalize_role(out.get("role"))
     if global_role == "super_admin":
         out["role_label"] = ROLE_LABELS["super_admin"]
         out["display_role"] = "super_admin"
+    elif org_role == "org_owner":
+        out["role_label"] = "Organization owner"
+        out["display_role"] = "org_owner"
     elif org_role == "org_admin":
         out["role_label"] = "Org Admin"
         out["display_role"] = "org_admin"
@@ -390,7 +405,7 @@ def user_is_org_admin_anywhere(user: dict[str, Any]) -> bool:
         row = session.scalar(
             select(OrgMembership.id).where(
                 OrgMembership.user_id == user_id,
-                OrgMembership.org_role == "org_admin",
+                OrgMembership.org_role.in_(("org_admin", "org_owner")),
             ).limit(1)
         )
         return row is not None

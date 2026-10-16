@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from app.core import (
@@ -140,6 +140,8 @@ def list_users(
     org_id: Optional[str] = None,
     user: dict[str, Any] = Depends(auth.require_user),
 ) -> list[dict[str, Any]]:
+    if org_id and auth.other_org_request(user, org_id):
+        return []
     target = org_id or memberships.primary_org_id(user)
     if memberships.is_super_admin(user):
         return users_admin.list_users(org_id=target, actor=user)
@@ -793,7 +795,11 @@ class OrgExecutorSettingsUpdate(BaseModel):
 
 @router.get("/api/orgs")
 def list_orgs(user: dict[str, Any] = Depends(auth.require_user)) -> list[dict[str, Any]]:
-    return orgs.list_orgs_for_user(user)
+    rows = orgs.list_orgs_for_user(user)
+    if user.get("auth_source") == "cookie" and user.get("org_id"):
+        bound = str(user["org_id"])
+        return [row for row in rows if str(row.get("id")) == bound]
+    return rows
 
 
 @router.post("/api/orgs")
@@ -841,6 +847,8 @@ def list_org_members(
     org_id: str,
     user: dict[str, Any] = Depends(auth.require_user),
 ) -> list[dict[str, Any]]:
+    if auth.other_org_request(user, org_id):
+        return []
     memberships.assert_org_access(user, org_id)
     return memberships.list_org_members(org_id)
 
@@ -850,6 +858,8 @@ def list_org_projects(
     org_id: str,
     user: dict[str, Any] = Depends(auth.require_user),
 ) -> list[dict[str, Any]]:
+    if auth.other_org_request(user, org_id):
+        return []
     memberships.assert_org_access(user, org_id)
     return orgs.list_org_projects(org_id)
 
@@ -971,7 +981,7 @@ def peek_invite(token: str) -> dict[str, Any]:
 
 
 @router.post("/api/invites/accept")
-def accept_invite(body: InviteAcceptRequest) -> dict[str, Any]:
+def accept_invite(body: InviteAcceptRequest) -> Any:
     try:
         result = invites.accept_invite(
             token=body.token,
@@ -983,6 +993,14 @@ def accept_invite(body: InviteAcceptRequest) -> dict[str, Any]:
         session = auth.authenticate(result["username"], body.password)
         if session:
             result["session"] = session
+            user = session["user"]
+            token = auth.create_browser_session(
+                str(user["id"]),
+                user.get("org_id") or user.get("primary_org_id"),
+            )
+            response = JSONResponse(result)
+            response.set_cookie(**auth.browser_cookie(token))
+            return response
         return result
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -7,19 +7,22 @@ import os
 import secrets
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import jwt
 from fastapi import Header, HTTPException, Request
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 
-from app.core.db import SessionLocal, User, engine
-from app.core.rbac import ROLE_LABELS, normalize_role
+from app.core.db import LoginSession, SessionLocal, User, engine
+from app.core.rbac import ROLE_LABELS, normalize_role, presented_role
 
 DEFAULT_USERNAME = "admin"
 DEFAULT_PASSWORD = "infralens"
 DEFAULT_DISPLAY_NAME = "Admin"
 TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
+SESSION_TTL_SECONDS = 60 * 60 * 12  # browser cookie, matches infralens-live
+SESSION_COOKIE = "il_session"
 JWT_ALGORITHM = "HS256"
 _PBKDF2_ROUNDS = 120_000
 # Per-request DB revalidation adds a full RTT on every /api call. Default off:
@@ -52,8 +55,8 @@ def _public_from_claims(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
     username = payload.get("username")
     if not user_id or not username:
         return None
-    role = normalize_role(payload.get("role") or "developer")
-    return {
+    role = presented_role(payload.get("role") or "developer")
+    public: dict[str, Any] = {
         "id": str(user_id),
         "username": str(username),
         "name": str(payload.get("name") or username),
@@ -62,6 +65,11 @@ def _public_from_claims(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
         "is_active": True,
         "org_ids": list(payload.get("org_ids") or []),
     }
+    if payload.get("org_role"):
+        public["org_role"] = str(payload["org_role"])
+    if payload.get("org_id"):
+        public["org_id"] = str(payload["org_id"])
+    return public
 
 
 def _load_user_from_db(user_id: str) -> Optional[dict[str, Any]]:
@@ -166,7 +174,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def _public_user(user: User) -> dict[str, Any]:
-    role = normalize_role(getattr(user, "role", None) or "developer")
+    role = presented_role(getattr(user, "role", None) or "developer")
     return {
         "id": user.id,
         "username": user.username,
@@ -222,13 +230,20 @@ def ensure_seed_user() -> None:
         # Table has users but not the seed username — leave them alone.
 
 
+def _find_user(session: Any, login: str) -> Optional[User]:
+    user = session.scalar(select(User).where(User.username == login))
+    if user is not None:
+        return user
+    return session.scalar(select(User).where(func.lower(User.email) == login.lower()))
+
+
 def authenticate(username: str, password: str) -> Optional[dict[str, Any]]:
     """Validate credentials against the users table and return a JWT session."""
     clean_user = (username or "").strip()
     if not clean_user or password is None:
         return None
     with SessionLocal() as session:
-        user = session.scalar(select(User).where(User.username == clean_user))
+        user = _find_user(session, clean_user)
         if user is None or not user.is_active:
             return None
         if not verify_password(password, user.password_hash):
@@ -241,6 +256,9 @@ def authenticate(username: str, password: str) -> Optional[dict[str, Any]]:
             public = memberships.enrich_user_public(public)
         except Exception:
             pass
+        org_id = public.get("primary_org_id") or public.get("org_id")
+        if org_id:
+            public["org_id"] = org_id
         token = jwt.encode(
             {
                 "sub": user.id,
@@ -248,6 +266,8 @@ def authenticate(username: str, password: str) -> Optional[dict[str, Any]]:
                 "name": user.display_name,
                 "role": public["role"],
                 "org_ids": public.get("org_ids") or [],
+                "org_id": org_id,
+                "org_role": public.get("org_role"),
                 "exp": expires,
             },
             _jwt_secret(),
@@ -259,6 +279,118 @@ def authenticate(username: str, password: str) -> Optional[dict[str, Any]]:
             "user": public,
             "expires_at": expires,
         }
+
+
+def session_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def browser_cookie(token: str) -> dict[str, Any]:
+    """Set-Cookie arguments for the live ``il_session`` cookie."""
+    return {
+        "key": SESSION_COOKIE,
+        "value": token,
+        "httponly": True,
+        "samesite": "lax",
+        "path": "/",
+        "max_age": SESSION_TTL_SECONDS,
+    }
+
+
+def create_browser_session(user_id: str, org_id: Optional[str]) -> str:
+    """Persist a browser session. The raw token is only returned to the cookie."""
+    token = secrets.token_hex(32)
+    expires = datetime.now(timezone.utc) + timedelta(seconds=SESSION_TTL_SECONDS)
+    with SessionLocal() as session:
+        session.add(
+            LoginSession(
+                token_hash=session_token_hash(token),
+                user_id=user_id,
+                org_id=org_id or None,
+                expires_at=expires,
+            )
+        )
+        session.commit()
+    return token
+
+
+def read_browser_session(token: Optional[str]) -> Optional[dict[str, Any]]:
+    """Return the session row, or None when the cookie is missing or expired."""
+    if not token:
+        return None
+    with SessionLocal() as session:
+        row = session.get(LoginSession, session_token_hash(token))
+        if row is None or row.expires_at is None:
+            return None
+        expires = row.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires <= datetime.now(timezone.utc):
+            session.delete(row)
+            session.commit()
+            return None
+        return {
+            "token_hash": row.token_hash,
+            "user_id": row.user_id,
+            "org_id": row.org_id,
+            "expires_at": expires,
+        }
+
+
+def destroy_browser_session(token: Optional[str]) -> bool:
+    """Delete the session row. Logout uses this so the cookie cannot be reused."""
+    if not token:
+        return False
+    with SessionLocal() as session:
+        row = session.get(LoginSession, session_token_hash(token))
+        if row is None:
+            return False
+        session.delete(row)
+        session.commit()
+        return True
+
+
+def user_from_browser_session(token: Optional[str]) -> Optional[dict[str, Any]]:
+    """Load the user from the session row.
+
+    This does not consult ``AUTH_VERIFY_DB``. The org id is the one stored on
+    the session, so a browser cannot choose another organization's rows.
+    """
+    record = read_browser_session(token)
+    if record is None:
+        return None
+    with SessionLocal() as session:
+        user = session.get(User, record["user_id"])
+        if user is None or not user.is_active:
+            return None
+        public = _public_user(user)
+    public["org_id"] = record["org_id"]
+    public["auth_source"] = "cookie"
+    try:
+        from app.tenancy import memberships
+
+        org_role = None
+        if record["org_id"]:
+            membership = memberships.org_membership(public["id"], str(record["org_id"]))
+            org_role = membership.org_role if membership is not None else None
+        public["org_role"] = org_role
+        enriched = memberships.enrich_user_public(public)
+        enriched["org_id"] = record["org_id"]
+        enriched["org_role"] = org_role
+        enriched["auth_source"] = "cookie"
+        return enriched
+    except Exception:
+        return public
+
+
+def other_org_request(user: dict[str, Any], org_id: Optional[str]) -> bool:
+    """True when this browser session is bound to a different organization."""
+    if user.get("auth_source") != "cookie" or not org_id:
+        return False
+    bound = user.get("org_id")
+    if not bound:
+        return False
+    return str(bound) != str(org_id)
 
 
 def verify_token(token: str | None) -> Optional[dict[str, Any]]:

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
 import loginImage from "../public/assets/images/login.png";
-import { fetchCurrentUser, getToken, login as doLogin } from "../lib/auth";
+import { fetchCurrentUser, login as doLogin } from "../lib/auth";
 import { ThemeToggle } from "./theme-toggle";
 
 export function LoginPage() {
@@ -16,12 +16,7 @@ export function LoginPage() {
   useEffect(() => {
     let cancelled = false;
     async function boot() {
-      // Only bounce away when the stored session still validates. A stale token
-      // used to send /login -> /dashboard -> /login in a hard navigation loop.
-      if (!getToken()) {
-        if (!cancelled) setChecking(false);
-        return;
-      }
+      // Bounce away only when the cookie session still validates.
       const current = await fetchCurrentUser();
       if (cancelled) return;
       if (current) {

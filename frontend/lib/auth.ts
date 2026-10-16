@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, apiUrl } from "./api";
 
 const TOKEN_KEY = "infralens_auth_token";
 const USER_KEY = "infralens_auth_user";
@@ -41,7 +41,12 @@ export function getStoredUser(): AuthUser | null {
 }
 
 export function saveSession(session: AuthSession): void {
-  window.localStorage.setItem(TOKEN_KEY, session.token);
+  const previous = getStoredUser();
+  if (!previous || previous.id !== session.user.id) {
+    window.localStorage.removeItem("projectId");
+  }
+  // The browser credential is the httpOnly cookie. Do not keep the bearer token.
+  window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.setItem(USER_KEY, JSON.stringify(session.user));
 }
 
@@ -57,21 +62,28 @@ export function authHeaders(): Record<string, string> {
 }
 
 export async function login(username: string, password: string): Promise<AuthSession> {
+  const previous = getStoredUser();
   // Clear previous user's project selection so isolation is not broken by localStorage.
   window.localStorage.removeItem("projectId");
   const session = await api<AuthSession>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
+    credentials: "include",
   });
+  if (previous?.id && session.user.id && previous.id !== session.user.id) {
+    window.localStorage.removeItem("projectId");
+  }
   saveSession(session);
   return session;
 }
 
 export async function fetchCurrentUser(): Promise<AuthUser | null> {
-  const token = getToken();
-  if (!token) return null;
   try {
     const body = await api<{ user: AuthUser }>("/api/auth/me");
+    const previous = getStoredUser();
+    if (previous?.id && body.user.id && previous.id !== body.user.id) {
+      window.localStorage.removeItem("projectId");
+    }
     window.localStorage.setItem(USER_KEY, JSON.stringify(body.user));
     return body.user;
   } catch (error) {
@@ -79,12 +91,14 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
     const message = error instanceof Error ? error.message : "";
     if (message === "Not authenticated" || /not authenticated|401/i.test(message)) {
       clearSession();
+      return null;
     }
-    return null;
+    return getStoredUser();
   }
 }
 
 export function logout(): void {
+  void fetch(apiUrl("/api/auth/logout"), { method: "POST", credentials: "include" }).catch(() => undefined);
   clearSession();
   window.location.href = "/login/";
 }
