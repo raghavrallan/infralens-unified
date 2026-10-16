@@ -148,6 +148,9 @@ export function LoginPage() {
                 )}
               </button>
             </form>
+            <a className="login-submit" href="/signup/" style={{ marginTop: 12, display: "inline-flex" }}>
+              Create an organization
+            </a>
           </main>
         </div>
 

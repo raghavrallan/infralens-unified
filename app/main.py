@@ -1810,6 +1810,76 @@ def settings_page() -> FileResponse:
     return _frontend_page("settings")
 
 
+@app.get("/settings/platform")
+@app.get("/settings/platform/")
+def platform_settings_page() -> FileResponse:
+    return FileResponse(_FRONTEND_DIR / "settings" / "platform" / "index.html")
+
+
+def _estate_page(name: str) -> FileResponse:
+    return _frontend_page(name)
+
+
+@app.get("/vms")
+@app.get("/vms/")
+def vms_page() -> FileResponse:
+    return _estate_page("vms")
+
+
+@app.get("/containers")
+@app.get("/containers/")
+def containers_page() -> FileResponse:
+    return _estate_page("containers")
+
+
+@app.get("/databricks")
+@app.get("/databricks/")
+def databricks_page() -> FileResponse:
+    return _estate_page("databricks")
+
+
+@app.get("/lakes")
+@app.get("/lakes/")
+def lakes_page() -> FileResponse:
+    return _estate_page("lakes")
+
+
+@app.get("/pipelines")
+@app.get("/pipelines/")
+def pipelines_page() -> FileResponse:
+    return _estate_page("pipelines")
+
+
+@app.get("/resources")
+@app.get("/resources/")
+def resources_page() -> FileResponse:
+    return _estate_page("resources")
+
+
+@app.get("/costs")
+@app.get("/costs/")
+def costs_page() -> FileResponse:
+    return _estate_page("costs")
+
+
+@app.get("/alerts")
+@app.get("/alerts/")
+def alerts_page() -> FileResponse:
+    return _estate_page("alerts")
+
+
+@app.get("/insights")
+@app.get("/insights/")
+def insights_page() -> FileResponse:
+    return _estate_page("insights")
+
+
+@app.get("/signup")
+@app.get("/signup/")
+def signup_page() -> FileResponse:
+    return _estate_page("signup")
+
+
 @app.get("/wiki")
 @app.get("/wiki/")
 def wiki_page() -> FileResponse:

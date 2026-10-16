@@ -1,5 +1,10 @@
-import { SettingsPage } from "../../components/settings-page";
+import { OrganizationPage } from "../../components/live/pages";
+import { LiveFrame } from "../../components/live/console";
 
 export default function Page() {
-  return <SettingsPage />;
+  return (
+    <LiveFrame>
+      <OrganizationPage />
+    </LiveFrame>
+  );
 }

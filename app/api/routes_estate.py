@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.core import auth
@@ -209,6 +210,33 @@ def _subscriptions(org_id: str) -> list[dict[str, Any]]:
         }
         for sub, project_id in rows
     ]
+
+
+class OrgSwitchBody(BaseModel):
+    orgId: str = ""
+    org_id: str = ""
+
+
+@router.post("/api/session/org")
+def switch_session_org(
+    body: OrgSwitchBody,
+    request: Request,
+    user: dict[str, Any] = Depends(auth.require_user),
+) -> dict[str, Any]:
+    from app.tenancy import memberships
+
+    org_id = (body.orgId or body.org_id).strip()
+    if memberships.org_membership(str(user.get("id") or ""), org_id) is None and not memberships.is_super_admin(user):
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    token = request.cookies.get(auth.SESSION_COOKIE)
+    if not token or not auth.set_browser_session_org(token, org_id):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"ok": True, "org_id": org_id}
+
+
+@router.get("/api/workspace")
+def workspace(user: dict[str, Any] = Depends(auth.require_user)) -> dict[str, Any]:
+    return _workspace(_actor(user))
 
 
 @router.get("/api/estate")

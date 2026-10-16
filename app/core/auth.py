@@ -337,6 +337,19 @@ def read_browser_session(token: Optional[str]) -> Optional[dict[str, Any]]:
         }
 
 
+def set_browser_session_org(token: Optional[str], org_id: str) -> bool:
+    """Bind the browser session to one organization the user belongs to."""
+    if not token or not org_id:
+        return False
+    with SessionLocal() as session:
+        row = session.get(LoginSession, session_token_hash(token))
+        if row is None:
+            return False
+        row.org_id = org_id
+        session.commit()
+        return True
+
+
 def destroy_browser_session(token: Optional[str]) -> bool:
     """Delete the session row. Logout uses this so the cookie cannot be reused."""
     if not token:

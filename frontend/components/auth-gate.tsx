@@ -10,7 +10,7 @@ function skipKey(userId?: string) {
   return userId ? `onboarding_skipped:${userId}` : "onboarding_skipped";
 }
 
-const PUBLIC_PATHS = new Set(["/login", "/accept-invite", "/approve-member"]);
+const PUBLIC_PATHS = new Set(["/login", "/signup", "/accept-invite", "/approve-member"]);
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "/";
