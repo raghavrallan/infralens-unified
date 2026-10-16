@@ -276,9 +276,9 @@ function FindingsBody() {
   );
 }
 
-export function DashboardFindingsPage() {
+export function DashboardFindingsPage({ embedded = false }: { embedded?: boolean }) {
   return (
-    <DashboardShell title="Findings">
+    <DashboardShell title="Findings" embedded={embedded}>
       <FindingsBody />
     </DashboardShell>
   );

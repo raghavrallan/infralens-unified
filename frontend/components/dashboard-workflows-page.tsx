@@ -448,7 +448,7 @@ function WorkflowActions({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-export function DashboardWorkflowsPage() {
+export function DashboardWorkflowsPage({ embedded = false }: { embedded?: boolean }) {
   const [workflowModal, setWorkflowModal] = useState<
     Workflow | null | undefined
   >(undefined);
@@ -456,6 +456,7 @@ export function DashboardWorkflowsPage() {
   return (
     <DashboardShell
       title="Workflows"
+      embedded={embedded}
       actions={<WorkflowActions onCreate={() => setWorkflowModal(null)} />}
     >
       <WorkflowsBody

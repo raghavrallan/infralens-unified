@@ -25,9 +25,9 @@ function BreakGlassBody() {
   );
 }
 
-export function DashboardBreakGlassPage() {
+export function DashboardBreakGlassPage({ embedded = false }: { embedded?: boolean }) {
   return (
-    <DashboardShell title="Break-glass">
+    <DashboardShell title="Break-glass" embedded={embedded}>
       <BreakGlassBody />
     </DashboardShell>
   );

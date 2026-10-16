@@ -70,10 +70,12 @@ export function DashboardShell({
   children,
   title,
   actions,
+  embedded = false,
 }: {
   children: ReactNode;
   title: string;
   actions?: ReactNode;
+  embedded?: boolean;
 }) {
   const pathname = usePathname() || "/dashboard/";
   const [projects, setProjects] = useState<Project[]>([]);
@@ -143,10 +145,9 @@ export function DashboardShell({
     ],
   );
 
-  return (
-    <DashboardContext.Provider value={contextValue}>
-      <Shell subtitle="Intelligence Layer" scroll loading={loading}>
-        <div className="dash-layout">
+  const body = (
+        <div className={embedded ? "space-y-4" : "dash-layout"}>
+          {embedded ? null : (
           <aside className="dash-sidebar-nav">
             <h3 className="nav-heading">Dashboard</h3>
             <nav className="module-tabs dash-subnav" aria-label="Dashboard sections">
@@ -165,11 +166,18 @@ export function DashboardShell({
               })}
             </nav>
           </aside>
-          <main className="dash">
+          )}
+          <main className={embedded ? "space-y-4" : "dash"}>
             <div className="dash-head">
               <div className="dash-context">
-                <span className="dash-context-label">Dashboard</span>
-                <strong>{title}</strong>
+                {embedded ? (
+                  <h1 className="text-2xl font-semibold text-[#232323]">{title}</h1>
+                ) : (
+                  <>
+                    <span className="dash-context-label">Dashboard</span>
+                    <strong>{title}</strong>
+                  </>
+                )}
               </div>
               <div className="dash-head-controls">
                 <label className="control">
@@ -216,7 +224,11 @@ export function DashboardShell({
             {children}
           </main>
         </div>
-      </Shell>
+  );
+
+  return (
+    <DashboardContext.Provider value={contextValue}>
+      {embedded ? body : <Shell subtitle="Intelligence Layer" scroll loading={loading}>{body}</Shell>}
     </DashboardContext.Provider>
   );
 }

@@ -318,9 +318,9 @@ function ApprovalsBody() {
   );
 }
 
-export function DashboardApprovalsPage() {
+export function DashboardApprovalsPage({ embedded = false }: { embedded?: boolean }) {
   return (
-    <DashboardShell title="Approvals">
+    <DashboardShell title="Approvals" embedded={embedded}>
       <ApprovalsBody />
     </DashboardShell>
   );
