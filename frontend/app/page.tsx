@@ -1,10 +1,14 @@
-import { ChatPage } from "../components/chat-page";
-import { LiveFrame } from "../components/live/console";
+"use client";
+
+import { useEffect } from "react";
 
 export default function Page() {
+  useEffect(() => {
+    window.location.replace("/dashboard/");
+  }, []);
   return (
-    <LiveFrame>
-      <ChatPage embedded />
-    </LiveFrame>
+    <main className="p-6">
+      <a href="/dashboard/">Estate overview</a>
+    </main>
   );
 }

@@ -150,7 +150,7 @@ const NAV: Array<
   { href: "/insights", label: "Advisor" },
   { href: "/settings", label: "Organization" },
   { section: "Workspace" },
-  { href: "/", label: "Chat" },
+  { href: "/chat", label: "Chat" },
   { href: "/wiki", label: "Wiki" },
   { href: "/dashboard/findings", label: "Findings" },
   { href: "/dashboard/workflows", label: "Workflows" },
@@ -158,6 +158,11 @@ const NAV: Array<
   { href: "/dashboard/break-glass", label: "Break-glass" },
   { href: "/dashboard/architecture", label: "Architecture" },
   { href: "/dashboard/engineering", label: "Engineering" },
+  { href: "/organizations", label: "Organizations" },
+  { href: "/onboarding", label: "Onboarding" },
+  { href: "/settings/platform", label: "Azure OpenAI" },
+  { href: "/accept-invite", label: "Accept invite" },
+  { href: "/approve-member", label: "Approve member" },
 ];
 
 function active(href: string, pathname: string, search: URLSearchParams): boolean {

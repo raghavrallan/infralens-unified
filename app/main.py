@@ -13,7 +13,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
@@ -1793,15 +1793,21 @@ def dashboard_break_glass_page() -> FileResponse:
 
 
 @app.get("/")
-def index() -> FileResponse:
-    return FileResponse(_FRONTEND_DIR / "index.html")
+def index() -> RedirectResponse:
+    return RedirectResponse(url="/dashboard/", status_code=307)
+
+
+@app.get("/chat")
+@app.get("/chat/")
+def chat_page() -> FileResponse:
+    return _frontend_page("chat")
 
 
 @app.get("/c/{chat_id}")
 @app.get("/c/{chat_id}/")
 def chat_session_page(chat_id: str) -> FileResponse:
-    """Serve the chat SPA for a specific conversation id."""
-    return FileResponse(_FRONTEND_DIR / "index.html")
+    """Serve the chat page for a specific conversation id."""
+    return FileResponse(_FRONTEND_DIR / "chat" / "index.html")
 
 
 @app.get("/settings")

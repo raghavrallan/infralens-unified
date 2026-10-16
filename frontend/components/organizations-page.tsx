@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { fetchCurrentUser, getStoredUser } from "../lib/auth";
 import { Shell } from "./shell";
@@ -100,7 +100,12 @@ function labelRole(role?: string | null) {
   return ROLE_LABELS[role] || role;
 }
 
-export function OrganizationsPage() {
+function OrgChrome({ embedded, children }: { embedded: boolean; children: ReactNode }) {
+  if (embedded) return <>{children}</>;
+  return <Shell subtitle="Organizations">{children}</Shell>;
+}
+
+export function OrganizationsPage({ embedded = false }: { embedded?: boolean }) {
   const [me, setMe] = useState<Me | null>(getStoredUser() as Me | null);
   const isSuper = me?.role === "super_admin" || me?.display_role === "super_admin";
   const isOrgAdmin =
@@ -408,7 +413,7 @@ export function OrganizationsPage() {
   const admins = members.filter((m) => m.org_role === "org_admin");
 
   return (
-    <Shell subtitle="Organizations">
+    <OrgChrome embedded={embedded}>
       <main className="org-layout">
         <aside className="org-sidebar card">
           <div className="org-sidebar-header">
@@ -1165,6 +1170,6 @@ export function OrganizationsPage() {
           )}
         </section>
       </main>
-    </Shell>
+    </OrgChrome>
   );
 }

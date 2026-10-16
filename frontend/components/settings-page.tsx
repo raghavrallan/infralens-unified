@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import type { ConnectionStatus, JsonObject, Project } from "../lib/types";
 import { Modal } from "./modal";
@@ -235,7 +235,12 @@ function ProviderCard({
   );
 }
 
-export function SettingsPage() {
+function SettingsChrome({ embedded, children }: { embedded: boolean; children: ReactNode }) {
+  if (embedded) return <>{children}</>;
+  return <Shell scroll>{children}</Shell>;
+}
+
+export function SettingsPage({ embedded = false }: { embedded?: boolean }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectMessage, setProjectMessage] = useState("");
@@ -435,7 +440,7 @@ export function SettingsPage() {
     }));
 
   return (
-    <Shell scroll>
+    <SettingsChrome embedded={embedded}>
       <main className="content">
         <h2 className="page-title">Settings</h2>
         <p className="page-sub">
@@ -745,6 +750,6 @@ export function SettingsPage() {
           </div>
         </Modal>
       )}
-    </Shell>
+    </SettingsChrome>
   );
 }

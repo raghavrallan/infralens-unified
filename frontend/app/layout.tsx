@@ -12,7 +12,7 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "InfraLens Skills Suite",
+  title: "Infralens",
   description: "InfraLens intelligence and skills workspace",
   manifest: "/site.webmanifest",
 };

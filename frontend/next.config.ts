@@ -23,8 +23,8 @@ const nextConfig: NextConfig = {
 
 if (isDev) {
   nextConfig.rewrites = async () => [
-    { source: "/c/:chatId", destination: "/?chat=:chatId" },
-    { source: "/c/:chatId/", destination: "/?chat=:chatId" },
+    { source: "/c/:chatId", destination: "/chat?chat=:chatId" },
+    { source: "/c/:chatId/", destination: "/chat?chat=:chatId" },
     { source: "/api/:path*/", destination: `${apiOrigin}/api/:path*` },
     { source: "/api/:path*", destination: `${apiOrigin}/api/:path*` },
   ];
